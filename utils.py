@@ -717,7 +717,7 @@ def detect(opt):
         
         if lanes_in_roi is not None:
             img_det = cv2.addWeighted(img_det, 0.8, lanes_in_roi, 1.0, 0.0)
-
+        print("#############################", dataset.mode)
         if dataset.mode == 'images':
             cv2.imwrite(save_path,img_det)
 
@@ -735,9 +735,9 @@ def detect(opt):
                 vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*fourcc), fps, (w, h))
             vid_writer.write(img_det)
         
-        else:
-            cv2.imshow('image', img_det)
-            cv2.waitKey(1)  # 1 millisecond
+        else: # dataset.mode == 'stream'
+            yield img_det, angle_to_rotate
+            
 
     print('Results saved to %s' % Path(opt.save_dir))
 

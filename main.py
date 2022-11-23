@@ -1,6 +1,6 @@
 import torch
 from utils import detect
-
+import cv2
 import time
 start_time = time.time()
 
@@ -24,6 +24,13 @@ if __name__ == '__main__':
 
     opt = vars_
     with torch.no_grad():
-        detect(opt)
+        if opt.source != '0':
+            detect(opt)
+        else:
+            for img, angle in detect(opt):
+                print(angle)
+                cv2.imshow('image', img)
+                cv2.waitKey(1)  # 1 millisecond
         
 print("--- %s seconds ---" % (time.time() - start_time))
+
