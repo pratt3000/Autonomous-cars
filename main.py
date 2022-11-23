@@ -1,9 +1,9 @@
 import torch
-from utils import detect
+from utils import detect_streams, detect_static
 import cv2
 import time
-start_time = time.time()
 
+start_time = time.time()
 if __name__ == '__main__':
     class vars_:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -19,15 +19,16 @@ if __name__ == '__main__':
         text_color = (255,255,0)
         implement_half_precision = True
         save_dir = "test_output/"
-        source = '0'  # [path to image/video] OR ['0' for camera on PC] 
+        # source = '0'  # [path to image/video] OR ['0' for camera on PC] 
+        source = 'test_data/1668636704120.jpg'
         weights = "model_weights/End-to-end.pth"
 
     opt = vars_
     with torch.no_grad():
         if opt.source != '0':
-            detect(opt)
+            detect_static(opt)
         else:
-            for img, angle in detect(opt):
+            for img, angle in detect_streams(opt):
                 print(angle)
                 cv2.imshow('image', img)
                 cv2.waitKey(1)  # 1 millisecond

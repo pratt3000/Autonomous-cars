@@ -560,6 +560,16 @@ def get_center_line(lines):
     x2 = int((400 - c)/slope)
     return (600,700),(x2,400), slope
 
+def calculate_steering_angle(slope):
+    temp = round(np.arctan(slope)*180/3.14, 4)
+    sign_ = 1
+    if temp<0:
+        sign_ = -1
+    temp = 90-abs(temp)
+
+    return temp*sign_
+    
+
 def get_lane_lines(image, opt):
     
     image = np.float32(cv2.merge((image,image,image)))    
@@ -604,7 +614,7 @@ def get_lane_lines(image, opt):
     center_line_coor1, center_line_coor2, slope = get_center_line(lines)
     #print("Slope of line is = ", slope)
     #print("angle to rotate = ", np.arctan(slope)*180/3.14)
-    angle_to_rotate = round(np.arctan(slope)*180/3.14, 4)
+    angle_to_rotate = calculate_steering_angle(slope)
     cv2.line(line_image,center_line_coor1, center_line_coor2,(0,255,0),10)
 
     # Iterate over the output "lines" and draw lines on a blank image
@@ -625,8 +635,8 @@ def get_lane_lines(image, opt):
     
     return lines_edges, angle_to_rotate
 
-def detect(opt):
-
+#### for image and video files
+def detect_static(opt):
     # Load model
     device = opt.device
     model = get_net()
@@ -680,7 +690,7 @@ def detect(opt):
         # Apply NMS
         det_pred = non_max_suppression(inf_out, conf_thres=opt.conf_thres, iou_thres=opt.iou_thres, classes=None, agnostic=False)
         det=det_pred[0]
-#         print(shapes)
+
         # Set basic variables
         _, _, height, width = img.shape
         h,w,_=img_det.shape
@@ -717,10 +727,9 @@ def detect(opt):
         
         if lanes_in_roi is not None:
             img_det = cv2.addWeighted(img_det, 0.8, lanes_in_roi, 1.0, 0.0)
-        print("#############################", dataset.mode)
+
         if dataset.mode == 'images':
             cv2.imwrite(save_path,img_det)
-
         elif dataset.mode == 'video':
             if vid_path != save_path:  # new video
                 vid_path = save_path
@@ -729,16 +738,103 @@ def detect(opt):
 
                 fourcc = 'mp4v'  # output video codec
                 fps = vid_cap.get(cv2.CAP_PROP_FPS)
-#                 fps = 5
                 print("The fps of video is:", fps)
                 h,w,_=img_det.shape
                 vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*fourcc), fps, (w, h))
             vid_writer.write(img_det)
-        
-        else: # dataset.mode == 'stream'
-            yield img_det, angle_to_rotate
-            
 
+    print('Results saved to %s' % Path(opt.save_dir))
+
+#### for streams
+def detect_streams(opt):
+    # Load model
+    device = opt.device
+    model = get_net()
+    checkpoint = torch.load(opt.weights, map_location= device)
+    model.load_state_dict(checkpoint['state_dict'])
+    model = model.to(device)
+    
+    # OPTIONAL: half precision to make faster processing
+    half = device.type != 'cpu'  # half precision only supported on CUDA
+    if half and opt.implement_half_precision:
+        model.half()  # to FP16
+        
+    # Set Dataloader
+    if opt.source.isnumeric():
+        cudnn.benchmark = True  # set True to speed up constant image size inference
+        dataset = LoadStreams(opt.source, img_size=opt.img_size)
+        bs = len(dataset)  # batch_size
+    else:
+        dataset = LoadImages(opt.source, img_size=opt.img_size)
+        bs = 1  # batch_size
+        
+    # Get names and colors
+    names = model.module.names if hasattr(model, 'module') else model.names
+    colors= [[random.randint(0, 255) for _ in range(3)] for _ in range(len(names))]
+    
+    # Steps for half precision
+    if opt.implement_half_precision:
+        img = torch.zeros((1, 3, opt.img_size, opt.img_size), device=device)  # init img
+        _ = model(img.half() if half else img) if device.type != 'cpu' else None  # run once
+    
+    model.eval()
+    vid_path, vid_writer = None, None
+    for i, (path, img, img_det, vid_cap,shapes) in tqdm(enumerate(dataset),total = len(dataset)):
+        
+        img = transform(img).to(device)
+        if opt.implement_half_precision:
+            img = img.half() if half else img.float()  # uint8 to fp16/32
+        
+        if img.ndimension() == 3:
+            img = img.unsqueeze(0)
+
+        # Inference
+        det_out, da_seg_out,ll_seg_out = model(img)
+        inf_out, _ = det_out
+
+        # Apply NMS
+        det_pred = non_max_suppression(inf_out, conf_thres=opt.conf_thres, iou_thres=opt.iou_thres, classes=None, agnostic=False)
+        det=det_pred[0]
+
+        # Set basic variables
+        _, _, height, width = img.shape
+        h,w,_=img_det.shape
+        pad_w, pad_h = shapes[1][1]
+        pad_w = int(pad_w)
+        pad_h = int(pad_h)
+        ratio = shapes[1][0][1]
+        if ratio>1:
+            ratio = 1
+
+        #### Drivable area mask
+        da_predict = da_seg_out[:, :, pad_h:(height-pad_h),pad_w:(width-pad_w)]
+        da_seg_mask = torch.nn.functional.interpolate(da_predict, scale_factor=int(1/ratio), mode='bilinear')
+        _, da_seg_mask = torch.max(da_seg_mask, 1)
+        da_seg_mask = da_seg_mask.int().squeeze().cpu().numpy()
+        
+        #### Lanes detected mask
+        ll_predict = ll_seg_out[:, :,pad_h:(height-pad_h),pad_w:(width-pad_w)]
+        ll_seg_mask = torch.nn.functional.interpolate(ll_predict, scale_factor=int(1/ratio), mode='bilinear')
+        _, ll_seg_mask = torch.max(ll_seg_mask, 1)
+        ll_seg_mask = ll_seg_mask.int().squeeze().cpu().numpy()
+        lanes_in_roi, angle_to_rotate = get_lane_lines((ll_seg_mask*255).astype(np.uint8), opt) 
+        
+        #### apply both masks
+        img_det = cv2.resize(img_det, (da_seg_mask.shape[1], da_seg_mask.shape[0]), interpolation = cv2.INTER_AREA)
+        img_det = show_seg_result(img_det, (da_seg_mask, ll_seg_mask), _, _, is_demo=True)
+        
+        #### Object detection
+        if len(det):
+            det[:,:4] = scale_coords(img.shape[2:],det[:,:4],img_det.shape).round()
+            for *xyxy,conf,cls in reversed(det):
+                label_det_pred = f'{names[int(cls)]} {conf:.2f}'
+                plot_one_box(xyxy, img_det , label=label_det_pred, color=colors[int(cls)], line_thickness=2)
+        
+        if lanes_in_roi is not None:
+            img_det = cv2.addWeighted(img_det, 0.8, lanes_in_roi, 1.0, 0.0)
+
+        # dataset.mode == 'stream'
+        yield img_det, angle_to_rotate
     print('Results saved to %s' % Path(opt.save_dir))
 
 
