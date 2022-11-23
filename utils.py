@@ -569,7 +569,6 @@ def calculate_steering_angle(slope):
 
     return temp*sign_
     
-
 def get_lane_lines(image, opt):
     
     image = np.float32(cv2.merge((image,image,image)))    
