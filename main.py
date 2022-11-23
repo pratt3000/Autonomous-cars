@@ -19,7 +19,7 @@ if __name__ == '__main__':
         text_color = (255,255,0)
         implement_half_precision = True
         save_dir = "test_output/"
-        source = '0'  #path for image/video; 0 for camera (probably, or try diff numbers)
+        source = '0'  # [path to image/video] OR ['0' for camera on PC] 
         weights = "model_weights/End-to-end.pth"
 
     opt = vars_
