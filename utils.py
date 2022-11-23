@@ -581,7 +581,7 @@ def get_lane_lines(image, opt):
     
     # This time we are defining a four sided polygon to mask
     imshape = image.shape
-    vertices = np.array([[(opt.lane_boundary_bottom_offset,imshape[0]),(450, opt.lane_boundary_top), (800, opt.lane_boundary_top), (imshape[1]-opt.lane_boundary_bottom_offset,imshape[0])]], dtype=np.int32)
+    vertices = np.array([[(opt.lane_boundary_bottom_offset,imshape[0]),(opt.lane_boundary_top_offset, opt.lane_boundary_top), (imshape[1]-opt.lane_boundary_top_offset, opt.lane_boundary_top), (imshape[1]-opt.lane_boundary_bottom_offset,imshape[0])]], dtype=np.int32)
     cv2.fillPoly(mask, vertices, ignore_mask_color)
     masked_edges = cv2.bitwise_and(edges, mask)
     
@@ -599,7 +599,7 @@ def get_lane_lines(image, opt):
     lines = cv2.HoughLinesP(masked_edges, rho, theta, threshold, np.array([]),
                                 min_line_length, max_line_gap)
     if lines is None:
-        return None
+        return None, 0 #NEED TO FIX THIS ANGLE AND SET THE CORRECT ONE (0 ig)
     
     center_line_coor1, center_line_coor2, slope = get_center_line(lines)
     #print("Slope of line is = ", slope)
@@ -662,7 +662,10 @@ def detect(opt):
     vid_path, vid_writer = None, None
     for i, (path, img, img_det, vid_cap,shapes) in tqdm(enumerate(dataset),total = len(dataset)):
         
-        save_path = str(opt.save_dir +'/'+ Path(path).name)
+        if isinstance(path, list):
+            save_path = opt.save_dir+'/'
+        else:
+            save_path = str(opt.save_dir +'/'+ Path(path).name)
         img = transform(img).to(device)
         if opt.implement_half_precision:
             img = img.half() if half else img.float()  # uint8 to fp16/32
@@ -685,7 +688,9 @@ def detect(opt):
         pad_w = int(pad_w)
         pad_h = int(pad_h)
         ratio = shapes[1][0][1]
-        
+        if ratio>1:
+            ratio = 1
+
         #### Drivable area mask
         da_predict = da_seg_out[:, :, pad_h:(height-pad_h),pad_w:(width-pad_w)]
         da_seg_mask = torch.nn.functional.interpolate(da_predict, scale_factor=int(1/ratio), mode='bilinear')
@@ -699,9 +704,8 @@ def detect(opt):
         ll_seg_mask = ll_seg_mask.int().squeeze().cpu().numpy()
         lanes_in_roi, angle_to_rotate = get_lane_lines((ll_seg_mask*255).astype(np.uint8), opt) 
         
-        if lanes_in_roi is None:
-            continue
         #### apply both masks
+        img_det = cv2.resize(img_det, (da_seg_mask.shape[1], da_seg_mask.shape[0]), interpolation = cv2.INTER_AREA)
         img_det = show_seg_result(img_det, (da_seg_mask, ll_seg_mask), _, _, is_demo=True)
         
         #### Object detection
@@ -710,11 +714,9 @@ def detect(opt):
             for *xyxy,conf,cls in reversed(det):
                 label_det_pred = f'{names[int(cls)]} {conf:.2f}'
                 plot_one_box(xyxy, img_det , label=label_det_pred, color=colors[int(cls)], line_thickness=2)
-         
-        img_det = cv2.addWeighted(img_det, 0.8, lanes_in_roi, 1.0, 0.0)
-#         plt.imshow(img_det)
-#         plt.title("Input Image")
-#         plt.show()
+        
+        if lanes_in_roi is not None:
+            img_det = cv2.addWeighted(img_det, 0.8, lanes_in_roi, 1.0, 0.0)
 
         if dataset.mode == 'images':
             cv2.imwrite(save_path,img_det)
