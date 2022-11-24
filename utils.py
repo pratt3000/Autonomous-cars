@@ -484,15 +484,20 @@ def clip_coords(boxes, img_shape):
     boxes[:, 1].clamp_(0, img_shape[0])  # y1
     boxes[:, 2].clamp_(0, img_shape[1])  # x2
     boxes[:, 3].clamp_(0, img_shape[0])  # y2
-    
+
+#### VIMP FUNCTIONS below this
 def plot_one_box(x, img, color=None, label=None, line_thickness=None):
     # Plots one bounding box on image img
     tl = line_thickness or round(0.0001 * (img.shape[0] + img.shape[1]) / 2) + 1  # line/font thickness
     color = color or [random.randint(0, 255) for _ in range(3)]
     c1, c2 = (int(x[0]), int(x[1])), (int(x[2]), int(x[3]))
-    cv2.rectangle(img, c1, c2, color, thickness=tl, lineType=cv2.LINE_AA)
+    if(abs(x[0]-x[2]) * abs(x[1]-x[3]) > 120000):
+        cv2.rectangle(img, c1, c2, [0,0,255], thickness=tl, lineType=cv2.LINE_AA)
+        return 1
+    else:
+        cv2.rectangle(img, c1, c2, [0,255,0], thickness=tl, lineType=cv2.LINE_AA)
+        return 0
 
-#### VIMP FUNCTIONS below this
 def get_center_line(lines):
     left_lines = [] # Like /
     right_lines = [] # Like \
@@ -629,7 +634,7 @@ def get_lane_lines(image, opt):
     lines_edges = cv2.polylines(lines_edges,vertices, True, (0,0,255), 10)
     
     # add text to image
-    lines_edges = cv2.putText(lines_edges, 'Angle to rotate: {0}'.format(angle_to_rotate),
+    lines_edges = cv2.putText(lines_edges, 'Steering angle: {0}'.format(angle_to_rotate),
                         (50,50), cv2.FONT_HERSHEY_SIMPLEX, 1, opt.text_color, 2, cv2.LINE_AA)
     
     return lines_edges, angle_to_rotate
@@ -718,11 +723,19 @@ def detect_static(opt):
         img_det = show_seg_result(img_det, (da_seg_mask, ll_seg_mask), _, _, is_demo=True)
         
         #### Object detection
+        obstacle_in_way = False
         if len(det):
             det[:,:4] = scale_coords(img.shape[2:],det[:,:4],img_det.shape).round()
             for *xyxy,conf,cls in reversed(det):
                 label_det_pred = f'{names[int(cls)]} {conf:.2f}'
-                plot_one_box(xyxy, img_det , label=label_det_pred, color=colors[int(cls)], line_thickness=2)
+                if obstacle_in_way == False:
+                    obstacle_in_way = plot_one_box(xyxy, img_det , label=label_det_pred, color=colors[int(cls)], line_thickness=2)
+                else:
+                    _ = plot_one_box(xyxy, img_det , label=label_det_pred, color=colors[int(cls)], line_thickness=2)
+
+        if obstacle_in_way:
+            img_det = cv2.putText(img_det, 'STOP (OBSTACLE in the WAY)',
+                        (50,100), cv2.FONT_HERSHEY_SIMPLEX, 1, opt.text_color, 2, cv2.LINE_AA)
         
         if lanes_in_roi is not None:
             img_det = cv2.addWeighted(img_det, 0.8, lanes_in_roi, 1.0, 0.0)
@@ -818,23 +831,27 @@ def detect_streams(opt):
         ll_seg_mask = ll_seg_mask.int().squeeze().cpu().numpy()
         lanes_in_roi, angle_to_rotate = get_lane_lines((ll_seg_mask*255).astype(np.uint8), opt) 
         
-        #### apply both masks
+        #### Apply both masks
         img_det = cv2.resize(img_det, (da_seg_mask.shape[1], da_seg_mask.shape[0]), interpolation = cv2.INTER_AREA)
         img_det = show_seg_result(img_det, (da_seg_mask, ll_seg_mask), _, _, is_demo=True)
         
         #### Object detection
+        obstacle_in_way = False
         if len(det):
             det[:,:4] = scale_coords(img.shape[2:],det[:,:4],img_det.shape).round()
             for *xyxy,conf,cls in reversed(det):
                 label_det_pred = f'{names[int(cls)]} {conf:.2f}'
-                plot_one_box(xyxy, img_det , label=label_det_pred, color=colors[int(cls)], line_thickness=2)
+                if obstacle_in_way == False:
+                    obstacle_in_way = plot_one_box(xyxy, img_det , label=label_det_pred, color=colors[int(cls)], line_thickness=2)
+                else:
+                    _ = plot_one_box(xyxy, img_det , label=label_det_pred, color=colors[int(cls)], line_thickness=2)
         
+        if obstacle_in_way:
+            img_det = cv2.putText(img_det, 'STOP (OBSTACLE in the WAY)',
+                        (50,100), cv2.FONT_HERSHEY_SIMPLEX, 1, opt.text_color, 2, cv2.LINE_AA)
+            
         if lanes_in_roi is not None:
             img_det = cv2.addWeighted(img_det, 0.8, lanes_in_roi, 1.0, 0.0)
 
         # dataset.mode == 'stream'
-        yield img_det, angle_to_rotate
-    print('Results saved to %s' % Path(opt.save_dir))
-
-
-    
+        yield img_det, angle_to_rotate, obstacle_in_way
