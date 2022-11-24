@@ -39,7 +39,5 @@ print("--- %s seconds ---" % (time.time() - start_time))
 
 # Todo:
 # 1. Check bboxs and return if one is too big or obj too close (use lidar inferences)
-# 2. Give warning if obj close (text?)
-# 3. Warning if going out of drivable region
-# 4. Write car translation code
-# print stop text on image
+# 2. Warning if going out of drivable region
+# 3. Write car translation code
