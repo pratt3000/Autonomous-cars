@@ -27,21 +27,21 @@ import time
 
 class vars_:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        img_size = 640
-        conf_thres = 0.25
-        iou_thres = 0.45
+        img_size = 640 # avoid touching this value unless necessary
+        conf_thres = 0.25 
+        iou_thres = 0.45     # incresing this will make the model detect objects (for object detection) which it is unsure of
         threshold = 70       # minimum number of votes (intersections in Hough grid cell)
         min_line_length = 4  # minimum number of pixels making up a line
         max_line_gap = 70    # maximum gap in pixels between connectable line segments
         lane_boundary_top = 450 # top limit of the box in which we are considering the lane boundaries
-        lane_boundary_top_offset = 450
-        lane_boundary_bottom_offset = 150
+        lane_boundary_top_offset = 450 # its the amount of pixels we are leaving at either side at the top of box inside which we consider lane boundaries.
+        lane_boundary_bottom_offset = 150 # its the amount of pixels we are leaving at either side at the bottom of box inside which we consider lane boundaries.
         text_color = (0,0,255)
-        implement_half_precision = True
+        implement_half_precision = True # set to false for making model more precise (making it more precise will increase the processing time!)
         save_dir = "temp/"
         # source = '0'  # [path to image/video] OR ['0' for camera on PC] 
         source = 'test_data/car.jpeg'
-        weights = "model_weights/End-to-end.pth"
+        weights = "model_weights/End-to-end.pth" # models weights
 
 class Ego :
     def __init__(self) :
