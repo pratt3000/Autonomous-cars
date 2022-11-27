@@ -566,13 +566,13 @@ def get_center_line(lines):
     return (600,700),(x2,400), slope
 
 def calculate_steering_angle(slope):
-    temp = round(np.arctan(slope)*180/3.14, 4)
-    sign_ = 1
-    if temp<0:
-        sign_ = -1
-    temp = 90-abs(temp)
+    temp = round(np.arctan(slope), 4)
+    # sign_ = 1
+    # if temp<0:
+    #     sign_ = -1
+    # temp = 90-abs(temp)
 
-    return temp*sign_
+    return temp
     
 def get_lane_lines(image, opt):
     
@@ -756,6 +756,7 @@ def detect_static(opt):
             vid_writer.write(img_det)
 
     print('Results saved to %s' % Path(opt.save_dir))
+    return angle_to_rotate, obstacle_in_way
 
 #### for streams
 def detect_streams(opt):
