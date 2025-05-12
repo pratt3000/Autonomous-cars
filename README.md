@@ -1,4 +1,4 @@
-This is a video of the code working on a actual vehicle. cool right? :) <br>
+This is a video of the code working on an actual vehicle. cool right? :) <br>
 I know it appears quite janky when looked at like this but I had applied smoothing so the actual controlling of the car was smoother and didnt involve as many jerks.
 
 
